@@ -1,5 +1,5 @@
 import streamlit as st
-from predict_top_models import predict_fight
+from prediction import predict_fight
 
 st.set_page_config(page_title="UFC Fight Predictor", layout="centered")
 st.title("🥊 UFC Fight Outcome Predictor")
