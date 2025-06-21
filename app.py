@@ -6,8 +6,8 @@ st.title("🥊 UFC Fight Outcome Predictor")
 st.markdown("Select two fighters to simulate a matchup and see win probabilities from top ML models.")
 
 # Fighter input fields
-fighter_a = st.text_input("Enter Fighter A Name", "Yair Rodriguez")
-fighter_b = st.text_input("Enter Fighter B Name", "Patricio Pitbull")
+fighter_a = st.text_input("Enter Fighter A Name", placeholder="e.g., Jon Jones")
+fighter_b = st.text_input("Enter Fighter B Name", placeholder="e.g., Stipe Miocic")
 
 # Predict button
 if st.button("Predict Fight Outcome"):
