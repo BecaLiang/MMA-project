@@ -16,7 +16,6 @@ if st.button("Predict Fight Outcome"):
             prediction_df = predict_fight(fighter_a, fighter_b)
             st.success(f"Prediction Complete: {fighter_a} vs {fighter_b}")
             st.dataframe(prediction_df.style.highlight_max(axis=1))
-        except ValueError as ve:
-            st.error(str(ve))
         except Exception as e:
-            st.error("An unexpected error occurred. Please check logs or try again.")
+            st.error("An unexpected error occurred. Here is the traceback:")
+            st.code(traceback.format_exc(), language='python')  # show full traceback in app
