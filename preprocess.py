@@ -1,4 +1,8 @@
 import pandas as pd
+import numpy as np
+import re
+from tqdm import tqdm
+from ufcdata import load_or_scrape_data
 
 # -------------------- 1. Clean fight results --------------------
 def clean_fight_results(results_df):
@@ -217,14 +221,40 @@ def aggregate_fighter_level(df):
 
     return df
 
-# -------------------- MAIN (example) --------------------
-if __name__ == "__main__":
-    print("This is the UFC preprocessing module. Use these functions in your main training script.")
+def run_preprocessing():
+    """
+    Run preprocessing on the loaded datasets.
+    Returns:
+        final_df (DataFrame): Preprocessed dataset.
+    """
+    # Load or scrape datasets
+    event_details_df, fight_details_df, fight_results_df, fight_stats_df = load_or_scrape_data()
 
-#stats_df = standardize_weightclass(stats_df)
-#stats_df = clean_strike_columns(stats_df)
-#stats_df = clean_signature_stats(stats_df)
-#stats_df = clean_metadata(stats_df)
-#stats_df = final_cleanup(stats_df)
-#final_df = aggregate_fighter_level(stats_df)
-#final_df
+    if fight_results_df is None or fight_stats_df is None:
+        raise ValueError("Failed to load or generate datasets.")
+
+    # Step 1: Clean fight results
+    fight_results_df = clean_fight_results(fight_results_df)
+
+    # Step 2: Clean fight stats
+    fight_stats_df = clean_fight_stats(fight_stats_df, fight_results_df)
+
+    # Step 3: Standardize weightclass
+    fight_stats_df = standardize_weightclass(fight_stats_df)
+
+    # Step 4: Clean strike columns
+    fight_stats_df = clean_strike_columns(fight_stats_df)
+
+    # Step 5: Clean signature stats
+    fight_stats_df = clean_signature_stats(fight_stats_df)
+
+    # Step 6: Clean metadata
+    fight_stats_df = clean_metadata(fight_stats_df)
+
+    # Step 7: Final cleanup
+    fight_stats_df = final_cleanup(fight_stats_df)
+
+    # Step 8: Aggregate fighter-level features
+    final_df = aggregate_fighter_level(fight_stats_df)
+
+    return final_df

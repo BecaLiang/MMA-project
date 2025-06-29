@@ -13,34 +13,35 @@ library of functions to scrape ufc stats
 
 # imports
 import pandas as pd
-import numpy as np
-import re
-import requests
-from bs4 import BeautifulSoup
-import itertools
-import string
+import os
+import yaml
+from tqdm import tqdm
+import scrape_ufc_stats_library as LIB
+import sys
+import importlib
 
-
+# Load configuration
+config = yaml.safe_load(open('scrape_ufc_stats_config.yaml'))
 
 # get soup from url
 def get_soup(url):
     '''
-    get soup from url using beautifulsoup
+    Get soup from URL using BeautifulSoup.
 
-    arguments:
-    url (str): url of page to parse
+    Arguments:
+    url (str): URL of page to parse
 
-    returns:
+    Returns:
     soup
     '''
-
-    # get page of url
-    page = requests.get(url)
-    # create soup
-    soup = BeautifulSoup(page.content, 'html.parser')
-
-    # return
-    return soup
+    try:
+        # Get page of URL with timeout
+        page = requests.get(url, timeout=10)  # Timeout after 10 seconds
+        soup = BeautifulSoup(page.content, 'html.parser')
+        return soup
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching URL {url}: {e}")
+        return None
 
 
 
@@ -632,140 +633,117 @@ def move_columns(df, cols_to_move=[], ref_col='', place=''):
     return(df[seg1 + seg2 + seg3])
 
 
-# In[2]:
+def scrape_data():
+    """
+    Scrape all UFC data and save to CSV files.
+    """
+    print("Getting soup from completed events page...")
+    events_url = config['completed_events_all_url']
+    soup = LIB.get_soup(events_url)
+
+    print("Parsing all event details...")
+    all_event_details_df = LIB.parse_event_details(soup)
+    all_event_details_df.to_csv(config['event_details_file_name'], index=False)
+
+    print("Parsing fight detail URLs from all events...")
+    list_of_events_urls = list(all_event_details_df['URL'])
+    all_fight_details_df = pd.DataFrame(columns=config['fight_details_column_names'])
+    for url in tqdm(list_of_events_urls, desc="Scraping Event Fight Details"):
+        soup = LIB.get_soup(url)
+        fight_details_df = LIB.parse_fight_details(soup)
+        all_fight_details_df = pd.concat([all_fight_details_df, fight_details_df])
+    all_fight_details_df.to_csv(config['fight_details_file_name'], index=False)
+
+    print("Starting to scrape fight results and stats...")
+    list_of_fight_details_urls = list(all_fight_details_df['URL'])
+    all_fight_results_df = pd.DataFrame(columns=config['fight_results_column_names'])
+    all_fight_stats_df = pd.DataFrame(columns=config['fight_stats_column_names'])
+
+    for i, url in enumerate(tqdm(list_of_fight_details_urls, desc="Scraping Fight Details")):
+        try:
+            soup = LIB.get_soup(url)
+            if soup is None:
+                continue
+
+            fight_results_df, fight_stats_df = LIB.parse_organise_fight_results_and_stats(
+                soup,
+                url,
+                config['fight_results_column_names'],
+                config['totals_column_names'],
+                config['significant_strikes_column_names']
+            )
+
+            all_fight_results_df = pd.concat([all_fight_results_df, fight_results_df])
+            all_fight_stats_df = pd.concat([all_fight_stats_df, fight_stats_df])
+
+        except Exception as e:
+            print(f"Error processing {url}: {e}")
+
+    all_fight_results_df.to_csv(config['fight_results_file_name'], index=False)
+    all_fight_stats_df.to_csv(config['fight_stats_file_name'], index=False)
+    print("Scraping complete. Results saved.")
+
+def load_or_scrape_data():
+    """
+    Load datasets if they exist, otherwise scrape data and generate them.
+    Returns:
+        event_details_df (DataFrame): Event details dataset.
+        fight_details_df (DataFrame): Fight details dataset.
+        fight_results_df (DataFrame): Fight results dataset.
+        fight_stats_df (DataFrame): Fight stats dataset.
+    """
+    try:
+        # Check if all dataset files exist
+        if all(os.path.exists(path) for path in [
+            config['event_details_file_name'],
+            config['fight_details_file_name'],
+            config['fight_results_file_name'],
+            config['fight_stats_file_name']
+        ]):
+            print("Loading existing datasets...")
+            event_details_df = pd.read_csv(config['event_details_file_name'])
+            fight_details_df = pd.read_csv(config['fight_details_file_name'])
+            fight_results_df = pd.read_csv(config['fight_results_file_name'])
+            fight_stats_df = pd.read_csv(config['fight_stats_file_name'])
+            print("Datasets loaded successfully.")
+        else:
+            print("Datasets not found. Scraping data...")
+            scrape_data()
+            event_details_df = pd.read_csv(config['event_details_file_name'])
+            fight_details_df = pd.read_csv(config['fight_details_file_name'])
+            fight_results_df = pd.read_csv(config['fight_results_file_name'])
+            fight_stats_df = pd.read_csv(config['fight_stats_file_name'])
+            print("Datasets generated and loaded successfully.")
+        return event_details_df, fight_details_df, fight_results_df, fight_stats_df
+    except Exception as e:
+        print(f"Error loading or scraping datasets: {e}")
+        return None, None, None, None
+
+# Do nothing unless explicitly run
+if __name__ == "__main__":
+    # Only scrape if CSV files are missing
+    cfg = yaml.safe_load(open('scrape_ufc_stats_config.yaml'))
+    if not os.path.exists(cfg['fight_results_file_name']) or not os.path.exists(cfg['fight_stats_file_name']):
+        scrape_data()
+    else:
+        print("CSV files already exist. Skipping scraping.")
 
 
-import pandas as pd
-from tqdm.notebook import tqdm_notebook
-import scrape_ufc_stats_library as LIB
-import sys
-import importlib
-import yaml
-
-config = yaml.safe_load(open('scrape_ufc_stats_config.yaml'))
-
-# define url to parse
-events_url = config['completed_events_all_url']
-
-# Force remove the module from cache
-sys.modules.pop('scrape_ufc_stats_library', None)
-
-# Now import it fresh
-import scrape_ufc_stats_library as LIB
-importlib.reload(LIB)
-
-# Check available attributes
-print(dir(LIB))  
-
-
-# In[4]:
-
-
-# get soup
-soup = LIB.get_soup(events_url)
-
-# parse event details
-all_event_details_df = LIB.parse_event_details(soup)
-
-# show event details
-display(all_event_details_df)
-
-# write event details to file
-all_event_details_df.to_csv(config['event_details_file_name'], index=False)
-
-
-# In[5]:
-
-
-# define list of urls of fights to parse
-list_of_events_urls = list(all_event_details_df['URL'])
-
-# create empty df to store fight details
-all_fight_details_df = pd.DataFrame(columns=config['fight_details_column_names'])
-
-# loop through each event and parse fight details
-for url in tqdm_notebook(list_of_events_urls):
-
-    # get soup
-    soup = LIB.get_soup(url)
-
-    # parse fight links
-    fight_details_df = LIB.parse_fight_details(soup)
-
-    # concat fight details
-    all_fight_details_df = pd.concat([all_fight_details_df, fight_details_df])
-
-# show all fight details
-display(all_fight_details_df)
-
-# write fight details to file
-all_fight_details_df.to_csv(config['fight_details_file_name'], index=False)
-
-
-# In[6]:
-
-
-# define list of urls of fights to parse
-list_of_fight_details_urls = list(all_fight_details_df['URL'])
-
-
-# In[11]:
-
-
-# create empty df to store fight results
-all_fight_results_df = pd.DataFrame(columns=config['fight_results_column_names'])
-# create empty df to store fight stats
-all_fight_stats_df = pd.DataFrame(columns=config['fight_stats_column_names'])
-
-# loop through each fight and parse fight results and stats
-for url in tqdm_notebook(list_of_fight_details_urls):
-
-    # get soup
-    soup = LIB.get_soup(url)
-
-    # parse fight results and fight stats
-    fight_results_df, fight_stats_df = LIB.parse_organise_fight_results_and_stats(
-        soup,
-        url,
-        config['fight_results_column_names'],
-        config['totals_column_names'],
-        config['significant_strikes_column_names']
-        )
-
-    # concat fight results
-    all_fight_results_df = pd.concat([all_fight_results_df, fight_results_df])
-    # concat fight stats
-    all_fight_stats_df = pd.concat([all_fight_stats_df, fight_stats_df])
-
-# show all fight results
-display(all_fight_results_df)
-# show all fight stats
-display(all_fight_stats_df)
-
-# write to file
-all_fight_results_df.to_csv(config['fight_results_file_name'], index=False)
-# write to file
-all_fight_stats_df.to_csv(config['fight_stats_file_name'], index=False)
-
-
-# # only use fight_results_df and fight_stats_df so far #
-
-# In[14]:
-
-
-event_details_df = pd.read_csv("/Users/beca/Desktop/UFC Model/ufc_event_details.csv")
-fight_details_df = pd.read_csv("/Users/beca/Desktop/UFC Model/ufc_fight_details.csv")
-all_fight_results_df = pd.read_csv("/Users/beca/Desktop/UFC Model/ufc_fight_results.csv")
-all_fight_stats_df = pd.read_csv("/Users/beca/Desktop/UFC Model/ufc_fight_stats.csv")
+#event_details_df = pd.read_csv("/Users/beca/Desktop/MMA-project-main/ufc_event_details.csv")
+#fight_details_df = pd.read_csv("/Users/beca/Desktop/MMA-project-main/ufc_fight_details.csv")
+#all_fight_results_df = pd.read_csv("/Users/beca/Desktop/MMA-project-main/ufc_fight_results.csv")
+#all_fight_stats_df = pd.read_csv("/Users/beca/Desktop/MMA-project-main/ufc_fight_stats.csv")
 
 # Check if the "EVENT" columns are the same
-events_event_details = set(event_details_df['EVENT'].unique())
-events_fight_details = set(fight_details_df['EVENT'].unique())
-events_fight_results = set(fight_results_df['EVENT'].unique())
-events_fight_stats = set(fight_stats_df['EVENT'].unique())
+#events_event_details = set(event_details_df['EVENT'].unique())
+#events_fight_details = set(fight_details_df['EVENT'].unique())
+#events_fight_results = set(fight_results_df['EVENT'].unique())
+#events_fight_stats = set(fight_stats_df['EVENT'].unique())
+
+# only use fight_results_df and fight_stats_df so far #
 
 
-# In[ ]:
+
 
 
 

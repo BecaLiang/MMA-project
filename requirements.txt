@@ -10,3 +10,10 @@ pandas
 scikit-learn
 xgboost
 joblib
+tqdm
+matplotlib
+ipywidgets
+pandas
+libomp
+pyyaml
+json

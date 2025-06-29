@@ -5,9 +5,13 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
 from sklearn.feature_selection import RFECV
 from sklearn.preprocessing import StandardScaler
+import pandas as pd
+import joblib
+import os
+
 
 # ============================
 # Load preprocessed dataframe: final_df
@@ -38,6 +42,8 @@ def run_rfecv(model, X, y, name):
     print(f"Selected Features for {name}: {selected_features}")
     return selector
 
+
+
 def train_and_evaluate(final_df):
     X_train, X_test, y_train, y_test = prepare_data(final_df)
 
@@ -50,8 +56,12 @@ def train_and_evaluate(final_df):
         "Support Vector Machine": SVC(probability=True)
     }
 
+    os.makedirs("models", exist_ok=True)
+    results = []
+
     for name, model in models.items():
         print(f"\n=== {name} ===")
+        selector = None  # initialize
 
         if name == "Neural Network (MLP)":
             scaler = StandardScaler()
@@ -60,15 +70,76 @@ def train_and_evaluate(final_df):
             model.fit(X_train_scaled, y_train)
             y_pred = model.predict(X_test_scaled)
 
+            # Save model and scaler
+            joblib.dump(model, f"models/{name}.pkl")
+            joblib.dump(scaler, f"models/{name}_scaler.pkl")
+
         elif name in ["Naive Bayes", "Support Vector Machine"]:
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
+            if name == "Support Vector Machine":
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train)
+                X_test_scaled = scaler.transform(X_test)
+                model.fit(X_train_scaled, y_train)
+                y_pred = model.predict(X_test_scaled)
+
+                # Save model and scaler
+                joblib.dump(model, f"models/{name}.pkl")
+                joblib.dump(scaler, f"models/{name}_scaler.pkl")
+            else:
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+                joblib.dump(model, f"models/{name}.pkl")
 
         else:
+            # Run RFECV and use selected features
             selector = run_rfecv(model, X_train, y_train, name)
             X_train_sel = selector.transform(X_train)
             X_test_sel = selector.transform(X_test)
             model.fit(X_train_sel, y_train)
             y_pred = model.predict(X_test_sel)
 
+            # Save model and selector
+            joblib.dump(model, f"models/{name}.pkl")
+            joblib.dump(selector, f"models/{name}_selector.pkl")
+
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
+        f1 = f1_score(y_test, y_pred, average='weighted')
+        support = len(y_test)
+
+        results.append({
+            "Model": name,
+            "Precision": precision,
+            "Recall": recall,
+            "F1 Score": f1,
+            "Support": support
+        })
+
         print(classification_report(y_test, y_pred))
+
+    return pd.DataFrame(results)
+
+
+import json
+
+def get_top_models(results_df, top_n=3):
+    top_models_df = results_df.sort_values(by="F1 Score", ascending=False).head(top_n)
+    print("\n=== Top Models ===")
+    print(top_models_df)
+
+    # Save top 3 model names to JSON
+    top_model_names = top_models_df["Model"].tolist()
+    with open("models/top_models.json", "w") as f:
+        json.dump(top_model_names, f)
+
+    return top_models_df
+
+
+if __name__ == "__main__":
+    from preprocess import run_preprocessing
+
+    print("Starting model training...")
+    final_df = run_preprocessing()
+    results_df = train_and_evaluate(final_df)
+    get_top_models(results_df, top_n=3)
+    print("All models trained and saved to 'models/' folder.")
